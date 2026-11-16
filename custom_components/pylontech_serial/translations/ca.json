@@ -13,9 +13,7 @@
                     "baud_rate": "Taxa de Baud",
                     "poll_interval": "Interval d'actualització (segons)",
                     "serial_port": "Port Sèrie",
-                    "rs485": "Protocol RS485 de baixa tensió",
-                    "module_count": "Nombre de mòduls RS485",
-                    "module_group": "Grup RS485"
+                    "rs485": "Protocol RS485 de baixa tensió"
                 },
                 "description": "Configura la connexió sèrie amb el teu conjunt de bateries Pylontech.",
                 "title": "Pylontech Sèrie"
@@ -34,9 +32,7 @@
                     "baud_rate": "Taxa de Baud",
                     "poll_interval": "Interval d'actualització (segons)",
                     "serial_port": "Port Sèrie",
-                    "rs485": "Protocol RS485 de baixa tensió",
-                    "module_count": "Nombre de mòduls RS485",
-                    "module_group": "Grup RS485"
+                    "rs485": "Protocol RS485 de baixa tensió"
                 },
                 "description": "Actualitza la configuració per a Pylontech Sèrie.",
                 "title": "Configura Pylontech Sèrie"

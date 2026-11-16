@@ -12,6 +12,3 @@ CONF_BATTERY_CAPACITY = "battery_capacity"
 DEFAULT_BATTERY_CAPACITY = 2.4 # kWh (US2000 standard)
 
 CONF_RS485 = "rs485"
-CONF_MODULE_COUNT = "module_count"
-CONF_MODULE_GROUP = "module_group"
-DEFAULT_MODULE_COUNT = 5

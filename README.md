@@ -85,8 +85,8 @@ To track your battery usage in the Energy Dashboard:
 ### Pylontech Low Voltage over RS485
 
 For an RS485 gateway used by FHEM's `PylonLowVoltage`, enable **RS485 low-voltage
-protocol** in the integration settings and enter the module count and group
-configured in FHEM. Modules are numbered from 1. Use the gateway's configured
+protocol** in the integration settings. The integration finds the first
+responding stack and detects its modules by address at startup. Use the gateway's configured
 baud rate and `socket://HOST:PORT` for raw TCP or `rfc2217://HOST:PORT` for an
 RFC 2217 listener. Use one polling client for the RS485 bus.
 

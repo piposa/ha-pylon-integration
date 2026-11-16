@@ -10,7 +10,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import DOMAIN
 from .structs import PylontechSystem
 from .parser import PylontechParser
-from .rs485 import poll_modules
+from .rs485 import discover_modules, poll_modules
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,12 +18,11 @@ class PylontechCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from the Pylontech battery."""
 
     def __init__(self, hass: HomeAssistant, port, baud_rate, poll_interval, default_capacity,
-                 *, rs485=False, module_count=5, group=0):
+                 *, rs485=False):
         """Initialize."""
         self.port = port
         self.rs485 = rs485
-        self.module_count = module_count
-        self.group = group
+        self._rs485_layout = None
         self._rs485_static = {}
         self.baud_rate = baud_rate
         self.default_capacity = default_capacity
@@ -98,8 +97,15 @@ class PylontechCoordinator(DataUpdateCoordinator):
     def _read_rs485_data(self):
         with self._lock:
             try:
+                serial = self._get_ready_serial()
+                if self._rs485_layout is None:
+                    self._rs485_layout = discover_modules(serial)
+                    if self._rs485_layout is None:
+                        raise UpdateFailed("No responding RS485 modules found")
+                    self._rs485_static.clear()
+                group, numbers = self._rs485_layout
                 modules = poll_modules(
-                    self._get_ready_serial(), self.module_count, self.group,
+                    serial, numbers, group,
                     self.update_interval, self._rs485_static, _LOGGER,
                 )
             except (OSError, TimeoutError, serialx.SerialException) as err:
@@ -107,7 +113,8 @@ class PylontechCoordinator(DataUpdateCoordinator):
             finally:
                 self._close_serial()
         if not modules:
-            raise UpdateFailed("No valid RS485 analog response from any configured module")
+            self._rs485_layout = None
+            raise UpdateFailed("No valid RS485 analog response from any detected module")
         return modules
 
     async def _async_update_data(self):

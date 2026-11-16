@@ -7,17 +7,14 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.core import callback
-from homeassistant.helpers.selector import SerialPortSelector
+from homeassistant.helpers.selector import SerialPortSelector, TextSelector
 from homeassistant.helpers.service_info.usb import UsbServiceInfo
 
-from .rs485 import read_command
+from .rs485 import find_group
 
 from .const import (
     DOMAIN,
     CONF_RS485,
-    CONF_MODULE_COUNT,
-    CONF_MODULE_GROUP,
-    DEFAULT_MODULE_COUNT,
     CONF_SERIAL_PORT,
     CONF_BAUD_RATE,
     CONF_POLL_INTERVAL,
@@ -28,13 +25,13 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def _probe_port(port: str, baud_rate: int, rs485: bool, group: int) -> bool:
+def _probe_port(port: str, baud_rate: int, rs485: bool) -> bool:
     """Check for a response using the selected protocol (blocking)."""
     ser = serialx.serial_for_url(port, baudrate=baud_rate, read_timeout=2)
     ser.open()
     try:
         if rs485:
-            return bool(read_command(ser, 2 + 16 * group, 0x42))
+            return find_group(ser) is not None
         ser.reset_read_buffer()
         ser.write(b"\n")
         time.sleep(0.1)
@@ -53,7 +50,7 @@ async def _async_validate(hass, settings) -> str | None:
     try:
         if not await hass.async_add_executor_job(
             _probe_port, port, settings[CONF_BAUD_RATE],
-            settings.get(CONF_RS485, False), settings.get(CONF_MODULE_GROUP, 0),
+            settings.get(CONF_RS485, False),
         ):
             return "cannot_connect"
     except (EOFError, OSError, TimeoutError, ValueError, serialx.SerialException):
@@ -65,15 +62,15 @@ async def _async_validate(hass, settings) -> str | None:
     return None
 
 
-def _schema(port=None, baud=DEFAULT_BAUD_RATE, poll=DEFAULT_POLL_INTERVAL) -> vol.Schema:
+def _schema(port=None) -> vol.Schema:
+    # Network URLs are valid endpoints but are absent from the serial device list.
+    port_selector = TextSelector() if port and "://" in port else SerialPortSelector()
     return vol.Schema(
         {
-            vol.Required(CONF_SERIAL_PORT, default=port or vol.UNDEFINED): SerialPortSelector(),
-            vol.Required(CONF_BAUD_RATE, default=baud): int,
-            vol.Required(CONF_POLL_INTERVAL, default=poll): int,
+            vol.Required(CONF_SERIAL_PORT): port_selector,
+            vol.Required(CONF_BAUD_RATE, default=DEFAULT_BAUD_RATE): int,
+            vol.Required(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): int,
             vol.Optional(CONF_RS485, default=False): bool,
-            vol.Optional(CONF_MODULE_COUNT, default=DEFAULT_MODULE_COUNT): vol.All(int, vol.Range(min=1, max=8)),
-            vol.Optional(CONF_MODULE_GROUP, default=0): vol.All(int, vol.Range(min=0, max=15)),
         }
     )
 
@@ -125,7 +122,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         suggested = user_input or ({CONF_SERIAL_PORT: self._usb_device} if self._usb_device else {})
         return self.async_show_form(
             step_id="user",
-            data_schema=self.add_suggested_values_to_schema(_schema(), suggested),
+            data_schema=self.add_suggested_values_to_schema(
+                _schema(suggested.get(CONF_SERIAL_PORT)), suggested
+            ),
             errors=errors,
         )
 
@@ -135,7 +134,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return OptionsFlowHandler()
 
 
-class OptionsFlowHandler(config_entries.OptionsFlow):
+class OptionsFlowHandler(config_entries.OptionsFlowWithReload):
     """Handle options flow."""
 
     async def async_step_init(self, user_input=None):
@@ -147,7 +146,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             return entry.options.get(key, entry.data.get(key, default))
 
         if user_input is not None:
-            error = await _async_validate(self.hass, user_input)
+            connection_changed = any(
+                user_input.get(key, default) != current(key, default)
+                for key, default in ((CONF_SERIAL_PORT, None), (CONF_BAUD_RATE, DEFAULT_BAUD_RATE),
+                                     (CONF_RS485, False))
+            )
+            error = await _async_validate(self.hass, user_input) if connection_changed else None
             if error is None:
                 return self.async_create_entry(title="", data=user_input)
             errors["base"] = error
@@ -157,11 +161,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             CONF_BAUD_RATE: current(CONF_BAUD_RATE, DEFAULT_BAUD_RATE),
             CONF_POLL_INTERVAL: current(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
             CONF_RS485: current(CONF_RS485, False),
-            CONF_MODULE_COUNT: current(CONF_MODULE_COUNT, DEFAULT_MODULE_COUNT),
-            CONF_MODULE_GROUP: current(CONF_MODULE_GROUP, 0),
         }
         return self.async_show_form(
             step_id="init",
-            data_schema=self.add_suggested_values_to_schema(_schema(), suggested),
+            data_schema=self.add_suggested_values_to_schema(
+                _schema(suggested.get(CONF_SERIAL_PORT)), suggested
+            ),
             errors=errors,
         )

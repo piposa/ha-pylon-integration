@@ -158,7 +158,7 @@ def test_rs485_five_modules_and_static_cache(monkeypatch):
     monkeypatch.setattr(rs485, "read_command", read_address)
     monkeypatch.setattr(rs485, "_COMMAND_DELAY", 0)
     cache = {}
-    args = (None, 5, 0, timedelta(seconds=15), cache, logging.getLogger(__name__))
+    args = (None, range(1, 6), 0, timedelta(seconds=15), cache, logging.getLogger(__name__))
     first = rs485.poll_modules(*args)
     assert list(first) == [1, 2, 3, 4, 5]
     assert first[5]["serialNumber"] == "module-6"
@@ -168,3 +168,16 @@ def test_rs485_five_modules_and_static_cache(monkeypatch):
     assert len(requests) == 15
     assert second[1]["serialNumber"] == "module-2"
     assert second[5]["packVolt"] == 51
+
+
+def test_rs485_discovery_finds_numbered_modules_after_address_gaps(monkeypatch):
+    def read_address(serial, address, command, *, timeout=None):
+        assert command == 0x42
+        assert timeout is not None
+        if address not in (0x22, 0x23, 0x26):
+            raise TimeoutError
+        return {"packVolt": 49.95}
+
+    monkeypatch.setattr(rs485, "read_command", read_address)
+    monkeypatch.setattr(rs485, "_COMMAND_DELAY", 0)
+    assert rs485.discover_modules(None) == (2, [1, 2, 5])

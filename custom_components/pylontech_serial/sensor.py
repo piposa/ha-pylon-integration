@@ -227,6 +227,8 @@ _MEASUREMENTS = {
 class PylontechRS485Sensor(PylontechBatteryEntity, SensorEntity):
     """An RS485 reading attached to its numbered module."""
 
+    _attr_device_class = None
+
     def __init__(self, coordinator, entry_id, module, key):
         super().__init__(coordinator, module)
         self._key = key
@@ -256,6 +258,20 @@ class PylontechRS485Sensor(PylontechBatteryEntity, SensorEntity):
                 self._attr_device_class = SensorDeviceClass.DURATION
             elif key == "nextCycletime":
                 self._attr_device_class = SensorDeviceClass.TIMESTAMP
+
+        if self._attr_device_class == SensorDeviceClass.VOLTAGE:
+            self._attr_suggested_display_precision = 3
+        elif self._attr_device_class == SensorDeviceClass.TEMPERATURE or key in (
+            "chargeCurrentLimit", "dischargeCurrentLimit",
+        ):
+            self._attr_suggested_display_precision = 1
+        elif key in ("packSOC", "packPower"):
+            self._attr_suggested_display_precision = 2
+        elif key in (
+            "packCurrent", "packCapacity", "packCapacityRemain", "packImbalance",
+            "cmdChainDuration", "paramChargeCurrentLimit", "paramDischargeCurrentLimit",
+        ):
+            self._attr_suggested_display_precision = 3
 
     @property
     def available(self):

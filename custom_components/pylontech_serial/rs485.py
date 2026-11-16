@@ -7,6 +7,8 @@ _FRAME = re.compile(rb"~([0-9A-Fa-f]+)\r$")
 _ALARMS = {0: "normal", 1: "below lower limit", 2: "above higher limit", 0xF0: "other error"}
 _DYNAMIC = (0x42, 0x44, 0x92)
 _STATIC = (0x93, 0x51, 0x4F, 0x96, 0x47)
+_DISCOVERY_TIMEOUT = 0.4
+_NO_RESPONSE = (EOFError, TimeoutError, ValueError)
 _COMMAND_DELAY = 0.1  # Minimum inter-command delay supported by PylonLowVoltage.
 
 
@@ -169,23 +171,48 @@ def parse_readings(command, version, payload):
     return decoder(data)
 
 
-def read_command(serial, address, command):
+def read_command(serial, address, command, *, timeout=None):
     """Write one command and decode its complete carriage-return terminated reply."""
     request = request_frame(address, command)
     serial.reset_read_buffer()
     serial.write(request)
-    reply = serial.read_until(b"\r", size=8192)
+    reply = serial.read_until(b"\r", size=8192, timeout=timeout)
     if reply.endswith(request):
-        reply = serial.read_until(b"\r", size=8192)
+        reply = serial.read_until(b"\r", size=8192, timeout=timeout)
     version, payload = response_payload(reply, address)
     return parse_readings(command, version, payload)
 
 
-def poll_modules(serial, count, group, interval, static_cache, logger):
+def _probe_module(serial, group, number):
+    try:
+        read_command(serial, number + 1 + 16 * group, 0x42, timeout=_DISCOVERY_TIMEOUT)
+    except _NO_RESPONSE:
+        return False
+    finally:
+        sleep(_COMMAND_DELAY)
+    return True
+
+
+def find_group(serial):
+    """Find the first stack whose master replies."""
+    return next((group for group in range(8) if _probe_module(serial, group, 1)), None)
+
+
+def discover_modules(serial):
+    """Find the stack and all responding module slots, including gaps."""
+    group = find_group(serial)
+    if group is None:
+        return None
+    numbers = [1]
+    numbers.extend(number for number in range(2, 17) if _probe_module(serial, group, number))
+    return group, numbers
+
+
+def poll_modules(serial, numbers, group, interval, static_cache, logger):
     """Read numbered modules sequentially and retain successful static reads."""
     modules = {}
     next_request = monotonic()
-    for number in range(1, count + 1):
+    for number in numbers:
         started = monotonic()
         address = number + 1 + 16 * group
         readings = {}
@@ -196,7 +223,7 @@ def poll_modules(serial, count, group, interval, static_cache, logger):
                 sleep(wait)
             try:
                 values = read_command(serial, address, command)
-            except (EOFError, TimeoutError, ValueError) as err:
+            except _NO_RESPONSE as err:
                 logger.debug("Module %d command %02X: %s", number, command, err)
                 if command == 0x42:
                     break

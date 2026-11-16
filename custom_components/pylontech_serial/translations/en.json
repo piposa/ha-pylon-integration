@@ -13,9 +13,7 @@
                     "baud_rate": "Baud Rate",
                     "poll_interval": "Poll Interval (seconds)",
                     "serial_port": "Serial Port",
-                    "rs485": "RS485 low-voltage protocol",
-                    "module_count": "Number of RS485 modules",
-                    "module_group": "RS485 group"
+                    "rs485": "RS485 low-voltage protocol"
                 },
                 "description": "Configure the serial connection to your Pylontech battery stack.",
                 "title": "Pylontech Serial"
@@ -34,9 +32,7 @@
                     "baud_rate": "Baud Rate",
                     "poll_interval": "Poll Interval (seconds)",
                     "serial_port": "Serial Port",
-                    "rs485": "RS485 low-voltage protocol",
-                    "module_count": "Number of RS485 modules",
-                    "module_group": "RS485 group"
+                    "rs485": "RS485 low-voltage protocol"
                 },
                 "description": "Update configuration for Pylontech Serial.",
                 "title": "Configure Pylontech Serial"
