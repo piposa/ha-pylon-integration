@@ -81,3 +81,16 @@ To track your battery usage in the Energy Dashboard:
 ## Troubleshooting
 - **No data?**: Check that the correct serial port is selected and that the cable is plugged into the **Console** port of the Master battery (not CAN/RS485 unless using a specific adapter).
 - **Permissions**: If running Home Assistant Core in Docker (not OS), ensure the device is passed through (`--device /dev/ttyUSB0`).
+
+### Pylontech Low Voltage over RS485
+
+For an RS485 gateway used by FHEM's `PylonLowVoltage`, enable **RS485 low-voltage
+protocol** in the integration settings and enter the module count and group
+configured in FHEM. Modules are numbered from 1. Use the gateway's configured
+baud rate and `socket://HOST:PORT` for raw TCP or `rfc2217://HOST:PORT` for an
+RFC 2217 listener. Use one polling client for the RS485 bus.
+
+Each numbered Home Assistant device displays the cell voltages, BMS and cell
+group temperatures, and pack measurements. Alarms, BMS limits, module
+identification, and communication readings appear under Diagnostic. The
+integration creates one sensor per temperature position reported by the BMS.

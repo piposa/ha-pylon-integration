@@ -10,15 +10,21 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import DOMAIN
 from .structs import PylontechSystem
 from .parser import PylontechParser
+from .rs485 import poll_modules
 
 _LOGGER = logging.getLogger(__name__)
 
 class PylontechCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from the Pylontech battery."""
 
-    def __init__(self, hass: HomeAssistant, port, baud_rate, poll_interval, default_capacity):
+    def __init__(self, hass: HomeAssistant, port, baud_rate, poll_interval, default_capacity,
+                 *, rs485=False, module_count=5, group=0):
         """Initialize."""
         self.port = port
+        self.rs485 = rs485
+        self.module_count = module_count
+        self.group = group
+        self._rs485_static = {}
         self.baud_rate = baud_rate
         self.default_capacity = default_capacity
         self.battery_capacities = {}
@@ -89,7 +95,24 @@ class PylontechCoordinator(DataUpdateCoordinator):
             finally:
                 self.serial = None
 
+    def _read_rs485_data(self):
+        with self._lock:
+            try:
+                modules = poll_modules(
+                    self._get_ready_serial(), self.module_count, self.group,
+                    self.update_interval, self._rs485_static, _LOGGER,
+                )
+            except (OSError, TimeoutError, serialx.SerialException) as err:
+                raise UpdateFailed(f"RS485 connection failed: {err}") from err
+            finally:
+                self._close_serial()
+        if not modules:
+            raise UpdateFailed("No valid RS485 analog response from any configured module")
+        return modules
+
     async def _async_update_data(self):
+        if self.rs485:
+            return await self.hass.async_add_executor_job(self._read_rs485_data)
         """Fetch data from the device."""
         # On first run, we might want to read info
         if self.data is None:

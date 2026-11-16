@@ -10,8 +10,14 @@ from homeassistant.core import callback
 from homeassistant.helpers.selector import SerialPortSelector
 from homeassistant.helpers.service_info.usb import UsbServiceInfo
 
+from .rs485 import read_command
+
 from .const import (
     DOMAIN,
+    CONF_RS485,
+    CONF_MODULE_COUNT,
+    CONF_MODULE_GROUP,
+    DEFAULT_MODULE_COUNT,
     CONF_SERIAL_PORT,
     CONF_BAUD_RATE,
     CONF_POLL_INTERVAL,
@@ -22,11 +28,13 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def _probe_port(port: str, baud_rate: int) -> bool:
-    """Open the port and check that the battery answers to `info` (blocking)."""
+def _probe_port(port: str, baud_rate: int, rs485: bool, group: int) -> bool:
+    """Check for a response using the selected protocol (blocking)."""
     ser = serialx.serial_for_url(port, baudrate=baud_rate, read_timeout=2)
     ser.open()
     try:
+        if rs485:
+            return bool(read_command(ser, 2 + 16 * group, 0x42))
         ser.reset_read_buffer()
         ser.write(b"\n")
         time.sleep(0.1)
@@ -39,12 +47,16 @@ def _probe_port(port: str, baud_rate: int) -> bool:
     return bool(response.strip())
 
 
-async def _async_validate(hass, port: str, baud_rate: int) -> str | None:
+async def _async_validate(hass, settings) -> str | None:
     """Return an error key if the port can't be used, otherwise None."""
+    port = settings[CONF_SERIAL_PORT]
     try:
-        if not await hass.async_add_executor_job(_probe_port, port, baud_rate):
+        if not await hass.async_add_executor_job(
+            _probe_port, port, settings[CONF_BAUD_RATE],
+            settings.get(CONF_RS485, False), settings.get(CONF_MODULE_GROUP, 0),
+        ):
             return "cannot_connect"
-    except (OSError, TimeoutError, ValueError, serialx.SerialException):
+    except (EOFError, OSError, TimeoutError, ValueError, serialx.SerialException):
         # ValueError: malformed URL; OSError: missing/busy device or unreachable host
         return "cannot_connect"
     except Exception:  # noqa: BLE001
@@ -59,6 +71,9 @@ def _schema(port=None, baud=DEFAULT_BAUD_RATE, poll=DEFAULT_POLL_INTERVAL) -> vo
             vol.Required(CONF_SERIAL_PORT, default=port or vol.UNDEFINED): SerialPortSelector(),
             vol.Required(CONF_BAUD_RATE, default=baud): int,
             vol.Required(CONF_POLL_INTERVAL, default=poll): int,
+            vol.Optional(CONF_RS485, default=False): bool,
+            vol.Optional(CONF_MODULE_COUNT, default=DEFAULT_MODULE_COUNT): vol.All(int, vol.Range(min=1, max=8)),
+            vol.Optional(CONF_MODULE_GROUP, default=0): vol.All(int, vol.Range(min=0, max=15)),
         }
     )
 
@@ -99,7 +114,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             port = user_input[CONF_SERIAL_PORT]
             self._async_abort_entries_match({CONF_SERIAL_PORT: port})
 
-            error = await _async_validate(self.hass, port, user_input[CONF_BAUD_RATE])
+            error = await _async_validate(self.hass, user_input)
             if error is None:
                 if self.unique_id is None:
                     await self.async_set_unique_id(port)
@@ -132,9 +147,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             return entry.options.get(key, entry.data.get(key, default))
 
         if user_input is not None:
-            error = await _async_validate(
-                self.hass, user_input[CONF_SERIAL_PORT], user_input[CONF_BAUD_RATE]
-            )
+            error = await _async_validate(self.hass, user_input)
             if error is None:
                 return self.async_create_entry(title="", data=user_input)
             errors["base"] = error
@@ -143,6 +156,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             CONF_SERIAL_PORT: current(CONF_SERIAL_PORT),
             CONF_BAUD_RATE: current(CONF_BAUD_RATE, DEFAULT_BAUD_RATE),
             CONF_POLL_INTERVAL: current(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
+            CONF_RS485: current(CONF_RS485, False),
+            CONF_MODULE_COUNT: current(CONF_MODULE_COUNT, DEFAULT_MODULE_COUNT),
+            CONF_MODULE_GROUP: current(CONF_MODULE_GROUP, 0),
         }
         return self.async_show_form(
             step_id="init",

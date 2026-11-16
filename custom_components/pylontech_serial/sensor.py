@@ -10,9 +10,8 @@ from homeassistant.const import (
     PERCENTAGE,
     EntityCategory,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .entity import PylontechSystemEntity, PylontechBatteryEntity
 
 from .const import DOMAIN
@@ -25,6 +24,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up the sensor platform."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
+    if coordinator.rs485:
+        _setup_rs485_sensors(entry, coordinator, async_add_entities)
+        return
     unique_id_prefix = entry.entry_id
     entities = []
     
@@ -188,3 +190,77 @@ class PylontechBatterySensor(PylontechBatteryEntity, SensorEntity):
     @property
     def device_class(self):
         return self._device_class
+
+
+def _setup_rs485_sensors(entry, coordinator, async_add_entities):
+    """Register newly discovered readings without changing existing entity IDs."""
+    registered = set()
+
+    @callback
+    def add_readings():
+        entities = []
+        for module, readings in coordinator.data.items():
+            for key in readings:
+                identity = (module, key)
+                if identity not in registered:
+                    registered.add(identity)
+                    entities.append(PylontechRS485Sensor(coordinator, entry.entry_id, module, key))
+        if entities:
+            async_add_entities(entities)
+
+    add_readings()
+    entry.async_on_unload(coordinator.async_add_listener(add_readings))
+
+
+_MEASUREMENTS = {
+    "packVolt": (UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE),
+    "packCurrent": (UnitOfElectricCurrent.AMPERE, SensorDeviceClass.CURRENT),
+    "packPower": (UnitOfPower.WATT, SensorDeviceClass.POWER),
+    "packSOC": (PERCENTAGE, SensorDeviceClass.BATTERY),
+    "packCapacity": ("Ah", None),
+    "packCapacityRemain": ("Ah", None),
+    "packImbalance": (PERCENTAGE, None),
+    "bmsTemperature": (UnitOfTemperature.CELSIUS, SensorDeviceClass.TEMPERATURE),
+}
+
+
+class PylontechRS485Sensor(PylontechBatteryEntity, SensorEntity):
+    """An RS485 reading attached to its numbered module."""
+
+    def __init__(self, coordinator, entry_id, module, key):
+        super().__init__(coordinator, module)
+        self._key = key
+        self._attr_unique_id = f"{entry_id}_rs485_bat{module}_{key.lower()}"
+        self._attr_name = key
+        measurement = _MEASUREMENTS.get(key)
+        if key.startswith("cellVoltage"):
+            measurement = (UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE)
+        if key.startswith("cellTemperature"):
+            measurement = (UnitOfTemperature.CELSIUS, SensorDeviceClass.TEMPERATURE)
+        if measurement:
+            self._attr_native_unit_of_measurement, self._attr_device_class = measurement
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+        elif key != "packState":
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+            if "VoltLimit" in key or "VoltageLimit" in key:
+                self._attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
+                self._attr_device_class = SensorDeviceClass.VOLTAGE
+            elif "CurrentLimit" in key:
+                self._attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
+                self._attr_device_class = SensorDeviceClass.CURRENT
+            elif "TempLimit" in key:
+                self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+                self._attr_device_class = SensorDeviceClass.TEMPERATURE
+            elif key == "cmdChainDuration":
+                self._attr_native_unit_of_measurement = "s"
+                self._attr_device_class = SensorDeviceClass.DURATION
+            elif key == "nextCycletime":
+                self._attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    @property
+    def available(self):
+        return super().available and self._key in self.coordinator.data.get(self._bat_id, {})
+
+    @property
+    def native_value(self):
+        return self.coordinator.data.get(self._bat_id, {}).get(self._key)

@@ -10,9 +10,15 @@ import voluptuous as vol
 from .const import DOMAIN, CONF_SERIAL_PORT, CONF_BAUD_RATE, CONF_POLL_INTERVAL, CONF_BATTERY_CAPACITY
 from .coordinator import PylontechCoordinator
 
+from .const import CONF_RS485, CONF_MODULE_COUNT, CONF_MODULE_GROUP, DEFAULT_MODULE_COUNT
+
 PLATFORMS = ["sensor", "button", "switch", "number"]
 
 _LOGGER = logging.getLogger(__name__)
+
+def _platforms(coordinator):
+    return ["sensor"] if coordinator.rs485 else PLATFORMS
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Pylontech Serial from a config entry."""
@@ -24,33 +30,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Battery capacity might be in data (old) or options (new)
     capacity = entry.options.get(CONF_BATTERY_CAPACITY, entry.data.get(CONF_BATTERY_CAPACITY, 2.4))
 
-    coordinator = PylontechCoordinator(hass, port, baud, interval, capacity)
+    rs485 = entry.options.get(CONF_RS485, entry.data.get(CONF_RS485, False))
+    modules = entry.options.get(CONF_MODULE_COUNT, entry.data.get(CONF_MODULE_COUNT, DEFAULT_MODULE_COUNT))
+    group = entry.options.get(CONF_MODULE_GROUP, entry.data.get(CONF_MODULE_GROUP, 0))
+    coordinator = PylontechCoordinator(
+        hass, port, baud, interval, capacity, rs485=rs485, module_count=modules, group=group
+    )
 
     # Fetch initial data so we have data when entities subscribe
     await coordinator.async_config_entry_first_refresh()
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, _platforms(coordinator))
     
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
+    if coordinator.rs485:
+        return True
 
     async def async_send_command(call: ServiceCall) -> dict:
         """Handle the service call."""
         command = call.data.get("command")
         
-        # Get the coordinator (assuming one entry for now, or use entry_id if passed)
-        # Service is registered globally for the integration, so we need to pick a target or default to the first
-        # Ideally services are registered per device, but simple global service is common for single-instance per integration
-        # If multiple instances, we might pick the first one from hass.data[DOMAIN]
-        
-        if not hass.data.get(DOMAIN):
-            raise ValueError("No Pylontech integration found")
-        
-        # Pick the first coordinator
-        entry_id = next(iter(hass.data[DOMAIN]))
-        coordinator: PylontechCoordinator = hass.data[DOMAIN][entry_id]
-        
+        coordinator = next((item for item in hass.data[DOMAIN].values() if not item.rs485), None)
+        if coordinator is None:
+            raise ValueError("No Pylontech console integration found")
+
         response = await hass.async_add_executor_job(coordinator.send_raw_command, command)
         return {"response": response}
 
@@ -70,9 +76,10 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, _platforms(coordinator))
     if unload_ok:
-        coordinator: PylontechCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id)
         await hass.async_add_executor_job(coordinator.shutdown)
 
     return unload_ok
