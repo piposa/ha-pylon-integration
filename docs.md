@@ -1,4 +1,6 @@
-# Example Responses
+# Protocol Notes
+
+## Console example responses
 
 ## `help`
 ### Raw:
@@ -191,3 +193,32 @@ _Without parameters, returns the current time._
 ```
 Ds3231 2025-12-21 21:14:53
 ```
+
+
+## RS485 low-voltage mode
+
+RS485 mode uses the read requests implemented by FHEM's `70_PylonLowVoltage.pm`.
+It sends ASCII-hex frames terminated by carriage returns and checks the reply
+address, status, length and checksums before decoding values. The group scan
+checks master addresses for groups 0 through 7. For the first responding
+group, the integration probes module numbers 1 through 16 using
+`address = module + 1 + 16 × group`. Only responding addresses are polled in
+subsequent cycles. Use one polling client per RS485 bus.
+
+The regular poll reads analog values (`0x42`), alarms (`0x44`) and charge
+management data (`0x92`). Identification and protection parameters
+(`0x93`, `0x51`, `0x4F`, `0x96`, `0x47`) are cached after a successful read.
+
+- Cell and pack voltages are converted from millivolts to volts. Home Assistant
+  suggests three decimal places, including for minimum, maximum and average
+  cell voltage. The average retains five-decimal precision internally.
+- Temperature positions are taken from the response. The first position is the
+  BMS temperature, followed by cell-group temperatures and any additional
+  numbered positions. Temperature values use a resolution of 0.1 °C.
+- Instantaneous current and capacity are shown to three decimals, dynamic
+  current limits to one, and power and state of charge to two. Cell count,
+  temperature count and cycle count are integers.
+
+A local adapter or a serial gateway can carry either protocol. The **RS485
+low-voltage protocol** setting selects the BMS command set. The port URL selects
+the network transport.

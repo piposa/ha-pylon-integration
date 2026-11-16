@@ -6,8 +6,9 @@ import serialx
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.components.usb import USBDevice, async_scan_serial_ports
 from homeassistant.core import callback
-from homeassistant.helpers.selector import SerialPortSelector, TextSelector
+from homeassistant.helpers.selector import SerialPortSelector
 from homeassistant.helpers.service_info.usb import UsbServiceInfo
 
 from .rs485 import find_group
@@ -62,12 +63,29 @@ async def _async_validate(hass, settings) -> str | None:
     return None
 
 
-def _schema(port=None) -> vol.Schema:
-    # Network URLs are valid endpoints but are absent from the serial device list.
-    port_selector = TextSelector() if port and "://" in port else SerialPortSelector()
+async def _async_suggest_port(hass):
+    """Prefer the supported USB adapter or an unambiguous available port."""
+    try:
+        ports = await async_scan_serial_ports(hass)
+    except OSError:
+        return None
+    recommended = [
+        port.device for port in ports
+        if isinstance(port, USBDevice) and (port.vid, port.pid) == ("067B", "2303")
+    ]
+    if len(recommended) == 1:
+        return recommended[0]
+    available = [
+        port.device for port in ports
+        if not port.device.startswith(("rfc2217://", "socket://"))
+    ]
+    return available[0] if len(available) == 1 else None
+
+
+def _schema() -> vol.Schema:
     return vol.Schema(
         {
-            vol.Required(CONF_SERIAL_PORT): port_selector,
+            vol.Required(CONF_SERIAL_PORT): SerialPortSelector(),
             vol.Required(CONF_BAUD_RATE, default=DEFAULT_BAUD_RATE): int,
             vol.Required(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): int,
             vol.Optional(CONF_RS485, default=False): bool,
@@ -119,11 +137,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title="Pylontech Battery", data=user_input)
             errors["base"] = error
 
-        suggested = user_input or ({CONF_SERIAL_PORT: self._usb_device} if self._usb_device else {})
+        suggested = user_input or {}
+        if user_input is None and (port := self._usb_device or await _async_suggest_port(self.hass)):
+            suggested[CONF_SERIAL_PORT] = port
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(
-                _schema(suggested.get(CONF_SERIAL_PORT)), suggested
+                _schema(), suggested
             ),
             errors=errors,
         )
@@ -165,7 +185,7 @@ class OptionsFlowHandler(config_entries.OptionsFlowWithReload):
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                _schema(suggested.get(CONF_SERIAL_PORT)), suggested
+                _schema(), suggested
             ),
             errors=errors,
         )

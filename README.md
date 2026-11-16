@@ -2,17 +2,18 @@
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 
-Connect your Pylontech US2000/US3000 battery stack directly to Home Assistant using a USB-to-RS232/RS485 cable.
+Monitor a Pylontech battery stack in Home Assistant over its serial console or through a low-voltage RS485 gateway.
 
 ## Features
-- **Direct Serial Connection**: Reads battery data directly from the Console port.
+- **Serial console** reads module data through the master battery's console port.
+- **RS485 low-voltage mode** discovers modules and reads each cell voltage, temperature position, and BMS diagnostics.
 - **Home Assistant Native**: No MQTT or Docker containers required.
-- **Energy Dashboard Ready**: Includes calculated Energy (kWh) sensors for proper dashboard Integration.
+- **Energy Dashboard** support in console mode includes calculated energy sensors in kWh.
 - **Per-Battery Monitoring**: Voltage, Current, SOC, Temperature, and Status for each module.
-- **Per-Battery Configuration**: Individually tune the capacity of each battery module (Number entity) to accurately compute total stored energy.
+- **Console capacity settings** let you tune the capacity of each battery module (Number entity) to accurately compute total stored energy.
 - **Diagnostics & Raw Data**: Track system health (SOH), cycle count, firmware version, and view raw serial responses for debugging.
-- **Time Synchronization**: Automatically or manually sync Home Assistant's time with your BMS internal clock.
-- **Custom Commands**: Send arbitrary raw serial commands directly to the BMS using the built-in Home Assistant service.
+- **Console time synchronization** can sync the BMS clock automatically or manually.
+- **Console commands** can be sent using the Home Assistant action.
 
 > [!WARNING]
 > **Disclaimer:** This integration interacts directly with your hardware. Incorrect configuration or usage could potentially cause damage to your batteries or connected devices. The creators and contributors of this integration take **no responsibility** for any damage, data loss, or other issues that may arise from using this software. Use at your own risk.
@@ -51,16 +52,27 @@ Connect your Pylontech US2000/US3000 battery stack directly to Home Assistant us
 
 ## Configuration
 
-1. Connect your Pylontech battery to the machine running Home Assistant via USB.
-2. In Home Assistant, go to **Settings** > **Devices & Services**.
-3. Click **+ ADD INTEGRATION** in the bottom right.
-4. Search for **Pylontech Serial**.
-5. Select your Serial Port from the list.
-6. Configure the Baud Rate (Default 115200) and Poll Interval (Default 15 seconds) if needed.
-7. Click **Submit**.
+1. Open **Settings → Devices & Services → Add Integration → Pylontech Serial**.
+2. Choose the serial port. A detected adapter is preselected when it can be identified unambiguously. Use **Enter manually** in the port selector to type a local path or network URL.
+3. Set the baud rate (default 115200) and polling interval **in seconds** (default 15).
+4. Enable **RS485 low-voltage protocol** if the gateway is attached to the BMS RS485 bus. Leave it off for the text console.
+5. Save. Changing an existing entry's options reloads the integration automatically.
+
+### RS485 gateways
+
+Use `socket://HOST:PORT` for a raw TCP listener or `rfc2217://HOST:PORT` for a
+listener that supports RFC 2217. With raw TCP, set the serial baud rate on the
+gateway. Saved gateway URLs appear in the same port selector as local adapters.
+
+The integration finds the first responding stack and its numbered modules at
+startup. Each module has its own Home Assistant device with cell voltages,
+measured temperatures and pack values. Alarms, limits, identification and
+communication readings appear under **Diagnostic**. Home Assistant defaults to
+three decimal places for voltage values in volts and one for temperatures in
+degrees Celsius. See [RS485 protocol notes](docs.md#rs485-low-voltage-mode).
 
 ### Battery Capacity Configuration
-Instead of a global configuration, this integration provides a **Number Entity** for *each* detected battery module. Once the integration is added, navigate to the device page for each module to adjust its capacity (in kWh). This ensures that the integration accurately calculates the total stored energy across batteries of different sizes.
+In console mode, the integration provides a **Number Entity** for *each* detected battery module. Once the integration is added, navigate to the device page for each module to adjust its capacity (in kWh). This ensures that the integration accurately calculates the total stored energy across batteries of different sizes.
 
 ### Hardware Configuration
 Ensure your battery DIP switches are configured correctly for communication. For US2000/US3000, **all DIP switches OFF** selects the default baud rate of **115200**.
@@ -70,7 +82,7 @@ Ensure your battery DIP switches are configured correctly for communication. For
 
 ## Energy Dashboard Setup
 
-To track your battery usage in the Energy Dashboard:
+To track battery usage in the Energy Dashboard in console mode, add these entities to your battery system.
 
 1. Go to **Settings** > **Dashboards** > **Energy**.
 2. Find the **Battery Systems** section and click **Add Battery System**.
@@ -79,18 +91,5 @@ To track your battery usage in the Energy Dashboard:
 5. Click **Save**.
 
 ## Troubleshooting
-- **No data?**: Check that the correct serial port is selected and that the cable is plugged into the **Console** port of the Master battery (not CAN/RS485 unless using a specific adapter).
+- **Console setup fails with `Did not receive valid 'pwr' response`**. Check the port and verify that the cable is plugged into the master battery's console. If the gateway connects to the BMS RS485 bus, enable RS485 low-voltage mode.
 - **Permissions**: If running Home Assistant Core in Docker (not OS), ensure the device is passed through (`--device /dev/ttyUSB0`).
-
-### Pylontech Low Voltage over RS485
-
-For an RS485 gateway used by FHEM's `PylonLowVoltage`, enable **RS485 low-voltage
-protocol** in the integration settings. The integration finds the first
-responding stack and detects its modules by address at startup. Use the gateway's configured
-baud rate and `socket://HOST:PORT` for raw TCP or `rfc2217://HOST:PORT` for an
-RFC 2217 listener. Use one polling client for the RS485 bus.
-
-Each numbered Home Assistant device displays the cell voltages, BMS and cell
-group temperatures, and pack measurements. Alarms, BMS limits, module
-identification, and communication readings appear under Diagnostic. The
-integration creates one sensor per temperature position reported by the BMS.

@@ -2,8 +2,9 @@
 import asyncio
 import logging
 
+from homeassistant.components.usb import SerialDevice, async_register_serial_port_scanner
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 
@@ -13,6 +14,27 @@ from .coordinator import PylontechCoordinator
 PLATFORMS = ["sensor", "button", "switch", "number"]
 
 _LOGGER = logging.getLogger(__name__)
+
+@callback
+def _configured_network_ports(hass: HomeAssistant) -> list[SerialDevice]:
+    """Offer saved gateways in Home Assistant's native serial port picker."""
+    addresses = {
+        port
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if (port := entry.options.get(CONF_SERIAL_PORT, entry.data.get(CONF_SERIAL_PORT)))
+        and port.startswith(("rfc2217://", "socket://"))
+    }
+    return [
+        SerialDevice(device=port, serial_number=None, manufacturer=None, description=None)
+        for port in sorted(addresses)
+    ]
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Register the integration's network serial endpoints with USB discovery."""
+    async_register_serial_port_scanner(hass, _configured_network_ports)
+    return True
+
 
 def _platforms(coordinator):
     return ["sensor"] if coordinator.rs485 else PLATFORMS
