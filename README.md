@@ -1,5 +1,8 @@
 # Pylontech Serial Integration for Home Assistant
 
+Fork releases use `<upstream-version>-piposa.<revision>`. Version
+`1.2.3-piposa.1` includes upstream 1.2.3 and this fork's RS485 extensions.
+
 [![Open Marketplace Repository on My HA](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=piposa&repository=ha-pylon-integration&category=integration)
 [![Add Integration to My HA](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=pylontech_serial)
 
