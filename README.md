@@ -1,6 +1,7 @@
 # Pylontech Serial Integration for Home Assistant
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![Open Marketplace Repository on My HA](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=piposa&repository=ha-pylon-integration&category=integration)
+[![Add Integration to My HA](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=pylontech_serial)
 
 Monitor a Pylontech battery stack in Home Assistant over its serial console or through a low-voltage RS485 gateway.
 
@@ -32,15 +33,22 @@ Monitor a Pylontech battery stack in Home Assistant over its serial console or t
 
 ## Installation
 
-### Via HACS (Recommended)
+### Via the Marketplace (Recommended)
 
-1.  Ensure you have [HACS](https://hacs.xyz/) installed.
-2.  Go to **HACS > Integrations**.
+Starting with Home Assistant **2026.11**, HACS is called the **Marketplace**.
+
+[![Open Marketplace Repository on My HA](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=piposa&repository=ha-pylon-integration&category=integration)
+
+1.  Ensure you have the [Marketplace](https://hacs.xyz/) (HACS) installed.
+2.  Go to **Marketplace > Integrations**.
 3.  Click the **3 dots** (top right) > **Custom repositories**.
 4.  Add the URL of this repository.
 5.  Category: **Integration**.
 6.  Click **Add**, then find and install **Pylontech Serial**.
 7.  Restart Home Assistant.
+
+> [!NOTE]
+> **Home Assistant earlier than 2026.11:** the Marketplace is named **HACS** there. Follow the same steps, using **HACS > Integrations** in step 2.
 
 ### Manual Installation
 
@@ -51,6 +59,8 @@ Monitor a Pylontech battery stack in Home Assistant over its serial console or t
 4. **Restart Home Assistant**: This is crucial for HA to recognize the new component.
 
 ## Configuration
+
+[![Add Integration to My HA](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=pylontech_serial)
 
 1. Open **Settings → Devices & Services → Add Integration → Pylontech Serial**.
 2. Choose the serial port. A detected adapter is preselected when it can be identified unambiguously. Use **Enter manually** in the port selector to type a local path or network URL.
